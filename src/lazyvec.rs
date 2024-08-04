@@ -94,7 +94,7 @@ impl<T: Debug> LazyVecPromise<T> {
     }
 }
 
-impl<T: Debug> DirectCacheAccess<Vec<T>> for LazyVecPromise<T> {
+impl<T: Debug> DirectCacheAccess<Vec<T>, String> for LazyVecPromise<T> {
     fn get_value_mut(&mut self) -> Option<&mut Vec<T>> {
         Some(&mut self.data)
     }
@@ -110,6 +110,20 @@ impl<T: Debug> DirectCacheAccess<Vec<T>> for LazyVecPromise<T> {
         if self.state == DataState::UpToDate {
             self.state = DataState::Uninitialized;
             Some(mem::take(&mut self.data))
+        } else {
+            None
+        }
+    }
+
+    fn take_result(&mut self) -> Option<Result<Vec<T>, String>> {
+        if self.state == DataState::UpToDate {
+            self.state = DataState::Uninitialized;
+            Some(Ok(mem::take(&mut self.data)))
+        } else if let DataState::Error(_) = self.state {
+            let DataState::Error(err) = mem::replace(&mut self.state, DataState::Uninitialized) else {
+                unreachable!();
+            };
+            Some(Err(err))
         } else {
             None
         }

@@ -117,7 +117,7 @@ pub enum ImmediateValueState<T> {
     Empty,
 }
 
-impl<T> DirectCacheAccess<T> for ImmediateValueState<T> {
+impl<T> DirectCacheAccess<T, BoxedSendError> for ImmediateValueState<T> {
     /// gets a mutable reference to the local cache if existing
     fn get_value_mut(&mut self) -> Option<&mut T> {
         match self {
@@ -146,9 +146,21 @@ impl<T> DirectCacheAccess<T> for ImmediateValueState<T> {
         }
         None
     }
+
+    fn take_result(&mut self) -> Option<Result<T, BoxedSendError>> {
+        if matches!(self, ImmediateValueState::Success(_)) {
+            let val = mem::replace(self, ImmediateValueState::Empty);
+            return match val {
+                ImmediateValueState::Success(inner) => Some(Ok(inner)),
+                ImmediateValueState::Error(err) => Some(Err(err)),
+                _ => None,
+            };
+        }
+        None
+    }
 }
 
-impl<T: Send + 'static> DirectCacheAccess<T> for ImmediateValuePromise<T> {
+impl<T: Send + 'static> DirectCacheAccess<T, BoxedSendError> for ImmediateValuePromise<T> {
     fn get_value_mut(&mut self) -> Option<&mut T> {
         self.state.get_value_mut()
     }
@@ -157,6 +169,9 @@ impl<T: Send + 'static> DirectCacheAccess<T> for ImmediateValuePromise<T> {
     }
     fn take_value(&mut self) -> Option<T> {
         self.state.take_value()
+    }
+    fn take_result(&mut self) -> Option<Result<T, BoxedSendError>> {
+        self.state.take_result()
     }
 }
 

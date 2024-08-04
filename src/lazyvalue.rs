@@ -1,7 +1,7 @@
 use crate::{
     box_future_factory, BoxedFutureFactory, DataState, DirectCacheAccess, Message, Promise,
 };
-use std::fmt::Debug;
+use std::{fmt::Debug, mem};
 use std::future::Future;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 
@@ -75,7 +75,7 @@ impl<T: Debug> LazyValuePromise<T> {
     }
 }
 
-impl<T: Debug> DirectCacheAccess<T> for LazyValuePromise<T> {
+impl<T: Debug> DirectCacheAccess<T, String> for LazyValuePromise<T> {
     /// get current value (may be incomplete) as mutable ref, be careful with this as
     /// further modification from the future may still push data.
     fn get_value_mut(&mut self) -> Option<&mut T> {
@@ -93,6 +93,20 @@ impl<T: Debug> DirectCacheAccess<T> for LazyValuePromise<T> {
         if self.state == DataState::UpToDate {
             self.state = DataState::Uninitialized;
             self.cache.take()
+        } else {
+            None
+        }
+    }
+
+    fn take_result(&mut self) -> Option<Result<T, String>> {
+        if self.state == DataState::UpToDate {
+            self.state = DataState::Uninitialized;
+            self.cache.take().map(|cache|Ok(cache))
+        } else if let DataState::Error(_) = self.state {
+            let DataState::Error(err) = mem::replace(&mut self.state, DataState::Uninitialized) else {
+                unreachable!();
+            };
+            Some(Err(err))
         } else {
             None
         }
